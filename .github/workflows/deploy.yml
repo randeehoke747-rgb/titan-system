@@ -1,0 +1,56 @@
+name: Titan Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_NAME: titan-system
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Rust tests
+        run: |
+          cargo fmt --all -- --check
+          cargo check --workspace --all-targets
+          cargo test --workspace
+
+      - name: Docker build
+        run: |
+          docker build \
+            -t "${IMAGE_NAME}:${GITHUB_SHA}" \
+            .
+
+      # Registry login/push goes here.
+      #
+      # Example:
+      # docker login ...
+      # docker push ...
+
+      # Kubernetes credentials/context should be
+      # configured through GitHub Actions secrets/environment.
+
+      # Example deployment:
+      #
+      # kubectl apply -k k8s/
+      # kubectl -n titan set image \
+      #   deployment/titan-control-plane \
+      #   titan-control-plane=<registry>/<image>:${GITHUB_SHA}
+      #
+      # kubectl -n titan rollout status \
+      #   deployment/titan-control-plane

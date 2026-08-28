@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: titan-control-plane
+  namespace: titan
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: titan-control-plane
+
+  template:
+    metadata:
+      labels:
+        app: titan-control-plane
+
+    spec:
+      containers:
+        - name: titan-control-plane
+          image: titan-system:local
+
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: http
+              containerPort: 8080
+
+          env:
+            - name: RUST_LOG
+              value: "info"
+
+            - name: NODE_ROLE
+              value: "control-plane"
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"
