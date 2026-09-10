@@ -76,3 +76,12 @@ pub struct MonitorStatus {
     pub released_transactions: usize,
     pub last_release_operator: Option<String>,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MonitorSnapshot {
+    pub config: MonitorConfig,
+    pub agents: Vec<crate::AutonomousAgent>,
+    pub transactions: Vec<StablecoinTransaction>,
+    pub alerts: Vec<TransactionAlert>,
+    pub last_release_operator: Option<String>,
+}

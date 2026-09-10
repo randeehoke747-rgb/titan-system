@@ -4,9 +4,9 @@ use std::{
 };
 
 use crate::{
-    AgentHeartbeat, AutonomousAgent, KeyCompromiseDetector, MonitorConfig, MonitorStatus,
-    OperatorReleaseRequest, StablecoinTransaction, TransactionAlert, TransactionIntakeRequest,
-    TransactionState,
+    AgentHeartbeat, AutonomousAgent, KeyCompromiseDetector, MonitorConfig, MonitorSnapshot,
+    MonitorStatus, OperatorReleaseRequest, StablecoinTransaction, TransactionAlert,
+    TransactionIntakeRequest, TransactionState,
 };
 
 #[derive(Clone, Debug)]
@@ -29,6 +29,38 @@ impl MonitorService {
             alerts: Vec::new(),
             last_release_operator: None,
         }
+    }
+
+    pub fn from_snapshot(snapshot: MonitorSnapshot) -> Self {
+        let mut service = Self::new(snapshot.config);
+        service.agents = snapshot
+            .agents
+            .into_iter()
+            .map(|agent| (agent.name.clone(), agent))
+            .collect();
+        service.transactions = snapshot
+            .transactions
+            .into_iter()
+            .map(|transaction| (transaction.transaction_id.clone(), transaction))
+            .collect();
+        service.alerts = snapshot.alerts;
+        service.last_release_operator = snapshot.last_release_operator;
+        service
+    }
+
+    pub fn snapshot(&self) -> MonitorSnapshot {
+        MonitorSnapshot {
+            config: self.config.clone(),
+            agents: self.agents.values().cloned().collect(),
+            transactions: self.transactions.values().cloned().collect(),
+            alerts: self.alerts.clone(),
+            last_release_operator: self.last_release_operator.clone(),
+        }
+    }
+
+    pub fn replace_config(&mut self, config: MonitorConfig) {
+        self.detector = KeyCompromiseDetector::new(config.approved_destinations.clone());
+        self.config = config;
     }
 
     pub fn register_or_update_agent(&mut self, heartbeat: AgentHeartbeat) {
@@ -233,5 +265,30 @@ mod tests {
         assert!(service.mark_agent_failure("agent-a"));
         assert!(service.mark_agent_failure("agent-a"));
         assert!(!service.is_ready());
+    }
+
+    #[test]
+    fn snapshot_round_trip_preserves_transactions() {
+        let mut service = MonitorService::new(MonitorConfig {
+            safe_wallet: "safe-wallet".into(),
+            approved_destinations: vec!["approved-wallet".into()],
+            minimum_active_agents: 1,
+        });
+        service.register_or_update_agent(AgentHeartbeat {
+            agent_name: "agent-a".into(),
+            role: AgentRole::Intake,
+        });
+        service.ingest(TransactionIntakeRequest {
+            transaction_id: Some("tx-3".into()),
+            asset: Stablecoin::Usdc,
+            amount_cents: 5_000,
+            source_wallet: "source-wallet".into(),
+            destination_wallet: "approved-wallet".into(),
+        });
+
+        let restored = MonitorService::from_snapshot(service.snapshot());
+
+        assert_eq!(restored.held_transactions().len(), 1);
+        assert_eq!(restored.active_agents(), 1);
     }
 }
