@@ -1,24 +1,31 @@
 # titan-system
-Titan control plane: Rust-based distributed system with Kubernetes orchestration and CI/CD.
+Hunter clone control plane for Titan AI agents, built with Rust and Axum.
 
-## Control plane endpoints
-- `GET /` returns the same liveness payload as `/health` for Render-friendly root health checks.
-- `GET /health` returns liveness plus current agent availability.
-- `GET /ready` returns readiness based on configured safe-wallet routing and minimum healthy agents.
-- `GET /status` returns queue, hold, release, redundancy, auth, persistence, and configuration status.
-- `GET /history` returns append-only audit history for authorized hold/release events.
-- `GET /alerts` lists queued review alerts for suspicious transfers.
-- `GET /transactions/held` lists transactions currently held in the safe wallet queue.
-- `POST /transactions/intake` accepts authorized USDC/USDT intake requests and places them on temporary hold, with all USDC requests automatically treated as high-alert operator-review items.
-- `POST /transactions/{transaction_id}/release` requires a bearer token and records an operator-approved release.
-- `POST /agents/heartbeat` refreshes redundant monitor agents.
-- `POST /agents/{agent_name}/failure` records repeated agent failure for failover visibility.
+## Hunter bot endpoints
+- `GET /` returns the same liveness payload as `/health`.
+- `GET /health` returns liveness plus current Hunter clone availability.
+- `GET /ready` returns readiness based on Discord bot configuration and minimum healthy clones.
+- `GET /status` returns clone, session, command, auth, persistence, and configuration status.
+- `GET /history` returns append-only Hunter session audit events.
+- `GET /commands` lists recorded Discord command dispatch events.
+- `GET /sessions` lists tracked Hunter sessions.
+- `POST /sessions` creates a Hunter clone session from a Discord context payload.
+- `POST /sessions/{session_id}/assign` requires a bearer token and assigns a Titan agent clone to the session.
+- `POST /sessions/{session_id}/messages` relays user, clone, operator, or system messages into the session transcript.
+- `POST /sessions/{session_id}/close` requires a bearer token and closes a Hunter session.
+- `POST /agents/heartbeat` refreshes Hunter clone heartbeat, capability, and assignment state.
+- `POST /agents/{agent_name}/failure` requires a bearer token and records repeated clone failure for failover visibility.
+- `POST /discord/commands` requires a bearer token and ingests Discord command events for spawn, assignment, relay, close, and status flows.
 
 ## Environment
-- `SAFE_WALLET_ADDRESS` sets the temporary safe wallet destination.
-- `APPROVED_DESTINATIONS` is a comma-separated allowlist of release destinations.
-- `MINIMUM_ACTIVE_AGENTS` sets the readiness threshold for healthy monitor agents.
-- `PORT` overrides the default HTTP bind port of `8080` for Render-compatible deployments.
-- `OPERATOR_API_TOKEN` enables authenticated operator approval for release requests.
-- `MONITOR_STATE_PATH` persists monitor state to a JSON file that can survive redeploys when backed by persistent storage.
-- `STRICT_STARTUP=true` makes the service fail fast on boot if required safe monitoring configuration is missing.
+- `HUNTER_IDENTITY` sets the default Hunter clone identity.
+- `HUNTER_CLONES` seeds named clones using `name:kind:cap1|cap2;...` definitions.
+- `ALLOWED_GUILDS` is a comma-separated allowlist of Discord guild IDs.
+- `ALLOWED_CHANNELS` is a comma-separated allowlist of Discord channel IDs.
+- `MINIMUM_ACTIVE_AGENTS` sets the readiness threshold for healthy Hunter clones.
+- `PORT` overrides the default HTTP bind port of `8080`.
+- `OPERATOR_API_TOKEN` enables authenticated operator assignment, close, and failure endpoints.
+- `DISCORD_BOT_TOKEN` marks the Discord bot runtime as configured for readiness checks.
+- `DISCORD_INGEST_TOKEN` enables authenticated Discord command ingestion.
+- `MONITOR_STATE_PATH` persists clone, session, command, and audit state to JSON.
+- `STRICT_STARTUP=true` makes the service fail fast on boot if required Hunter configuration is missing.
