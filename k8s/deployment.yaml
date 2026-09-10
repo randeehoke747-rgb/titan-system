@@ -16,6 +16,7 @@ spec:
         app: titan-control-plane
 
     spec:
+      terminationGracePeriodSeconds: 30
       containers:
         - name: titan-control-plane
           image: titan-system:local
@@ -33,9 +34,15 @@ spec:
             - name: NODE_ROLE
               value: "control-plane"
 
+            - name: SAFE_WALLET_ADDRESS
+              value: "SAFE-WALLET-UNCONFIGURED"
+
+            - name: MINIMUM_ACTIVE_AGENTS
+              value: "2"
+
           readinessProbe:
             httpGet:
-              path: /health
+              path: /ready
               port: http
             initialDelaySeconds: 3
             periodSeconds: 5
@@ -46,6 +53,13 @@ spec:
               port: http
             initialDelaySeconds: 10
             periodSeconds: 10
+
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            failureThreshold: 12
+            periodSeconds: 5
 
           resources:
             requests:
