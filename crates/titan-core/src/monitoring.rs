@@ -4,9 +4,9 @@ use std::{
 };
 
 use crate::{
-    AgentHeartbeat, AutonomousAgent, KeyCompromiseDetector, MonitorConfig, MonitorSnapshot,
-    MonitorStatus, OperatorReleaseRequest, StablecoinTransaction, TransactionAlert,
-    TransactionIntakeRequest, TransactionState,
+    AgentHeartbeat, AuditEvent, AuditEventKind, AutonomousAgent, KeyCompromiseDetector,
+    MonitorConfig, MonitorSnapshot, MonitorStatus, OperatorReleaseRequest,
+    StablecoinTransaction, TransactionAlert, TransactionIntakeRequest, TransactionState,
 };
 
 #[derive(Clone, Debug)]
@@ -16,6 +16,7 @@ pub struct MonitorService {
     agents: HashMap<String, AutonomousAgent>,
     transactions: HashMap<String, StablecoinTransaction>,
     alerts: Vec<TransactionAlert>,
+    audit_events: Vec<AuditEvent>,
     last_release_operator: Option<String>,
 }
 
@@ -27,6 +28,7 @@ impl MonitorService {
             agents: HashMap::new(),
             transactions: HashMap::new(),
             alerts: Vec::new(),
+            audit_events: Vec::new(),
             last_release_operator: None,
         }
     }
@@ -44,6 +46,7 @@ impl MonitorService {
             .map(|transaction| (transaction.transaction_id.clone(), transaction))
             .collect();
         service.alerts = snapshot.alerts;
+        service.audit_events = snapshot.audit_events;
         service.last_release_operator = snapshot.last_release_operator;
         service
     }
@@ -54,6 +57,7 @@ impl MonitorService {
             agents: self.agents.values().cloned().collect(),
             transactions: self.transactions.values().cloned().collect(),
             alerts: self.alerts.clone(),
+            audit_events: self.audit_events.clone(),
             last_release_operator: self.last_release_operator.clone(),
         }
     }
@@ -120,6 +124,21 @@ impl MonitorService {
             self.alerts.push(alert.clone());
         }
 
+        self.audit_events.push(AuditEvent {
+            event_id: format!("hold-{transaction_id}"),
+            transaction_id: transaction_id.clone(),
+            kind: AuditEventKind::TransactionHeld,
+            detail: format!(
+                "{} transaction placed on temporary hold for destination {}.",
+                match transaction.asset {
+                    crate::Stablecoin::Usdc => "USDC",
+                    crate::Stablecoin::Usdt => "USDT",
+                },
+                transaction.destination_wallet
+            ),
+            recorded_at_epoch_ms: transaction.created_at_epoch_ms,
+        });
+
         self.transactions.insert(transaction_id, transaction);
         alert
     }
@@ -132,8 +151,26 @@ impl MonitorService {
         let transaction = self.transactions.get_mut(transaction_id)?;
         transaction.state = TransactionState::Released;
         transaction.released_by = Some(request.operator_id.clone());
-        transaction.release_note = request.note;
-        self.last_release_operator = Some(request.operator_id);
+        transaction.release_note = request.note.clone();
+        self.last_release_operator = Some(request.operator_id.clone());
+        self.audit_events.push(AuditEvent {
+            event_id: format!("release-{transaction_id}"),
+            transaction_id: transaction_id.to_owned(),
+            kind: AuditEventKind::TransactionReleased,
+            detail: format!(
+                "Transaction released by operator {}{}",
+                request.operator_id,
+                request
+                    .note
+                    .as_deref()
+                    .map(|note| format!(" with note: {note}"))
+                    .unwrap_or_default()
+            ),
+            recorded_at_epoch_ms: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis(),
+        });
         Some(transaction.clone())
     }
 
@@ -147,6 +184,10 @@ impl MonitorService {
             .filter(|transaction| transaction.state == TransactionState::Held)
             .cloned()
             .collect()
+    }
+
+    pub fn audit_history(&self) -> &[AuditEvent] {
+        &self.audit_events
     }
 
     pub fn status(&self) -> MonitorStatus {
@@ -163,6 +204,7 @@ impl MonitorService {
 
         MonitorStatus {
             safe_wallet: self.config.safe_wallet.clone(),
+            safe_wallet_configured: self.has_configured_safe_wallet(),
             active_agents: self.active_agents(),
             minimum_active_agents: self.config.minimum_active_agents,
             ready: self.is_ready(),
@@ -174,8 +216,7 @@ impl MonitorService {
     }
 
     pub fn is_ready(&self) -> bool {
-        !self.config.safe_wallet.trim().is_empty()
-            && self.active_agents() >= self.config.minimum_active_agents
+        self.has_configured_safe_wallet() && self.active_agents() >= self.config.minimum_active_agents
     }
 
     pub fn active_agents(&self) -> usize {
@@ -184,13 +225,18 @@ impl MonitorService {
             .filter(|agent| agent.is_healthy())
             .count()
     }
+
+    fn has_configured_safe_wallet(&self) -> bool {
+        let safe_wallet = self.config.safe_wallet.trim();
+        !safe_wallet.is_empty() && safe_wallet != "SAFE-WALLET-UNCONFIGURED"
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
         AgentHeartbeat, AgentRole, MonitorConfig, MonitorService, Stablecoin,
-        TransactionIntakeRequest,
+        OperatorReleaseRequest, TransactionIntakeRequest,
     };
 
     #[test]
@@ -314,5 +360,51 @@ mod tests {
 
         assert_eq!(restored.held_transactions().len(), 1);
         assert_eq!(restored.active_agents(), 1);
+    }
+
+    #[test]
+    fn unconfigured_safe_wallet_is_not_ready() {
+        let mut service = MonitorService::new(MonitorConfig {
+            safe_wallet: "SAFE-WALLET-UNCONFIGURED".into(),
+            approved_destinations: vec![],
+            minimum_active_agents: 1,
+        });
+        service.register_or_update_agent(AgentHeartbeat {
+            agent_name: "agent-a".into(),
+            role: AgentRole::Intake,
+        });
+
+        assert!(!service.is_ready());
+        assert!(!service.status().safe_wallet_configured);
+    }
+
+    #[test]
+    fn release_adds_audit_event() {
+        let mut service = MonitorService::new(MonitorConfig {
+            safe_wallet: "safe-wallet".into(),
+            approved_destinations: vec!["approved-wallet".into()],
+            minimum_active_agents: 1,
+        });
+        service.ingest(TransactionIntakeRequest {
+            transaction_id: Some("tx-4".into()),
+            asset: Stablecoin::Usdt,
+            amount_cents: 10_000,
+            source_wallet: "source-wallet".into(),
+            destination_wallet: "approved-wallet".into(),
+        });
+
+        service.release(
+            "tx-4",
+            OperatorReleaseRequest {
+                operator_id: "operator-1".into(),
+                note: Some("approved".into()),
+            },
+        );
+
+        assert_eq!(service.audit_history().len(), 2);
+        assert_eq!(
+            service.audit_history().last().map(|event| &event.kind),
+            Some(&crate::AuditEventKind::TransactionReleased)
+        );
     }
 }

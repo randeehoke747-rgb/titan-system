@@ -7,8 +7,8 @@ use axum::{
 use serde_json::json;
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use titan_core::{
-    AgentHeartbeat, AgentRole, MonitorConfig, MonitorService, MonitorSnapshot, MonitorStatus,
-    OperatorReleaseRequest, TransactionAlert, TransactionIntakeRequest,
+    AgentHeartbeat, AgentRole, AuditEvent, MonitorConfig, MonitorService, MonitorSnapshot,
+    MonitorStatus, OperatorReleaseRequest, TransactionAlert, TransactionIntakeRequest,
 };
 use tokio::sync::RwLock;
 use tracing::info;
@@ -24,6 +24,7 @@ struct AppState {
 struct RuntimeConfig {
     operator_api_token: Option<String>,
     monitor_state_path: Option<PathBuf>,
+    strict_startup: bool,
 }
 
 fn operator_api_token_from_env() -> Option<String> {
@@ -45,7 +46,34 @@ fn runtime_config_from_env() -> RuntimeConfig {
     RuntimeConfig {
         operator_api_token: operator_api_token_from_env(),
         monitor_state_path: monitor_state_path_from_env(),
+        strict_startup: strict_startup_from_env(),
     }
+}
+
+fn strict_startup_from_env() -> bool {
+    matches!(
+        std::env::var("STRICT_STARTUP")
+            .ok()
+            .as_deref()
+            .map(str::trim),
+        Some("1" | "true" | "TRUE" | "yes" | "YES")
+    )
+}
+
+fn safe_wallet_configured(config: &MonitorConfig) -> bool {
+    let safe_wallet = config.safe_wallet.trim();
+    !safe_wallet.is_empty() && safe_wallet != "SAFE-WALLET-UNCONFIGURED"
+}
+
+fn configuration_errors(config: &MonitorConfig, runtime_config: &RuntimeConfig) -> Vec<String> {
+    let mut errors = Vec::new();
+    if !safe_wallet_configured(config) {
+        errors.push("SAFE_WALLET_ADDRESS is not configured.".to_owned());
+    }
+    if runtime_config.operator_api_token.is_none() {
+        errors.push("OPERATOR_API_TOKEN is not configured.".to_owned());
+    }
+    errors
 }
 
 fn expected_bearer_token(headers: &HeaderMap) -> Option<&str> {
@@ -97,11 +125,24 @@ async fn ready(State(state): State<AppState>) -> Result<Json<serde_json::Value>,
 async fn status(State(state): State<AppState>) -> Json<serde_json::Value> {
     let monitor = state.monitor.read().await;
     let monitor_status: MonitorStatus = monitor.status();
+    let config = monitor_config_from_env();
+    let runtime_config = RuntimeConfig {
+        operator_api_token: state.operator_api_token.clone(),
+        monitor_state_path: state.monitor_state_path.clone(),
+        strict_startup: strict_startup_from_env(),
+    };
     Json(json!({
         "monitor": monitor_status,
         "operator_auth_configured": state.operator_api_token.is_some(),
         "persistence_enabled": state.monitor_state_path.is_some(),
+        "strict_startup": runtime_config.strict_startup,
+        "configuration_errors": configuration_errors(&config, &runtime_config),
     }))
+}
+
+async fn history(State(state): State<AppState>) -> Json<Vec<AuditEvent>> {
+    let monitor = state.monitor.read().await;
+    Json(monitor.audit_history().to_vec())
 }
 
 async fn alerts(State(state): State<AppState>) -> Json<Vec<TransactionAlert>> {
@@ -286,6 +327,11 @@ async fn main() {
         .init();
 
     let runtime_config = runtime_config_from_env();
+    let monitor_config = monitor_config_from_env();
+    let config_errors = configuration_errors(&monitor_config, &runtime_config);
+    if runtime_config.strict_startup && !config_errors.is_empty() {
+        panic!("strict startup configuration errors: {}", config_errors.join(" "));
+    }
     let app_state = AppState {
         monitor: Arc::new(RwLock::new(monitor_from_env(&runtime_config).await)),
         operator_api_token: runtime_config.operator_api_token,
@@ -297,6 +343,7 @@ async fn main() {
         .route("/health", get(health))
         .route("/ready", get(ready))
         .route("/status", get(status))
+        .route("/history", get(history))
         .route("/alerts", get(alerts))
         .route("/transactions/held", get(held_transactions))
         .route("/transactions/intake", post(ingest_transaction))

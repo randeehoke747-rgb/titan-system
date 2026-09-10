@@ -5,7 +5,8 @@ Titan control plane: Rust-based distributed system with Kubernetes orchestration
 - `GET /` returns the same liveness payload as `/health` for Render-friendly root health checks.
 - `GET /health` returns liveness plus current agent availability.
 - `GET /ready` returns readiness based on configured safe-wallet routing and minimum healthy agents.
-- `GET /status` returns queue, hold, release, redundancy, auth, and persistence status.
+- `GET /status` returns queue, hold, release, redundancy, auth, persistence, and configuration status.
+- `GET /history` returns append-only audit history for authorized hold/release events.
 - `GET /alerts` lists queued review alerts for suspicious transfers.
 - `GET /transactions/held` lists transactions currently held in the safe wallet queue.
 - `POST /transactions/intake` accepts authorized USDC/USDT intake requests and places them on temporary hold, with all USDC requests automatically treated as high-alert operator-review items.
@@ -20,3 +21,4 @@ Titan control plane: Rust-based distributed system with Kubernetes orchestration
 - `PORT` overrides the default HTTP bind port of `8080` for Render-compatible deployments.
 - `OPERATOR_API_TOKEN` enables authenticated operator approval for release requests.
 - `MONITOR_STATE_PATH` persists monitor state to a JSON file that can survive redeploys when backed by persistent storage.
+- `STRICT_STARTUP=true` makes the service fail fast on boot if required safe monitoring configuration is missing.

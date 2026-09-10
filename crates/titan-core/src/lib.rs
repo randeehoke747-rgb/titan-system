@@ -8,8 +8,8 @@ pub use ai_agent::{AgentRole, AutonomousAgent};
 pub use attack_security::KeyCompromiseDetector;
 pub use monitoring::MonitorService;
 pub use transaction::{
-    AgentHeartbeat, MonitorConfig, MonitorSnapshot, MonitorStatus, OperatorReleaseRequest,
-    Stablecoin, StablecoinTransaction, TransactionAlert, TransactionIntakeRequest,
-    TransactionState,
+    AgentHeartbeat, AuditEvent, AuditEventKind, MonitorConfig, MonitorSnapshot, MonitorStatus,
+    OperatorReleaseRequest, Stablecoin, StablecoinTransaction, TransactionAlert,
+    TransactionIntakeRequest, TransactionState,
 };
 pub use vulnerability::{Vulnerability, VulnerabilityLevel};

@@ -68,6 +68,7 @@ pub struct TransactionAlert {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MonitorStatus {
     pub safe_wallet: String,
+    pub safe_wallet_configured: bool,
     pub active_agents: usize,
     pub minimum_active_agents: usize,
     pub ready: bool,
@@ -83,5 +84,22 @@ pub struct MonitorSnapshot {
     pub agents: Vec<crate::AutonomousAgent>,
     pub transactions: Vec<StablecoinTransaction>,
     pub alerts: Vec<TransactionAlert>,
+    pub audit_events: Vec<AuditEvent>,
     pub last_release_operator: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AuditEventKind {
+    TransactionHeld,
+    TransactionReleased,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AuditEvent {
+    pub event_id: String,
+    pub transaction_id: String,
+    pub kind: AuditEventKind,
+    pub detail: String,
+    pub recorded_at_epoch_ms: u128,
 }
