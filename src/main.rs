@@ -330,7 +330,10 @@ async fn main() {
     let monitor_config = monitor_config_from_env();
     let config_errors = configuration_errors(&monitor_config, &runtime_config);
     if runtime_config.strict_startup && !config_errors.is_empty() {
-        panic!("strict startup configuration errors: {}", config_errors.join(" "));
+        panic!(
+            "strict startup configuration errors: {}",
+            config_errors.join(" ")
+        );
     }
     let app_state = AppState {
         monitor: Arc::new(RwLock::new(monitor_from_env(&runtime_config).await)),

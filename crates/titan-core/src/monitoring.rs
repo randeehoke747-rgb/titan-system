@@ -5,8 +5,8 @@ use std::{
 
 use crate::{
     AgentHeartbeat, AuditEvent, AuditEventKind, AutonomousAgent, KeyCompromiseDetector,
-    MonitorConfig, MonitorSnapshot, MonitorStatus, OperatorReleaseRequest,
-    StablecoinTransaction, TransactionAlert, TransactionIntakeRequest, TransactionState,
+    MonitorConfig, MonitorSnapshot, MonitorStatus, OperatorReleaseRequest, StablecoinTransaction,
+    TransactionAlert, TransactionIntakeRequest, TransactionState,
 };
 
 #[derive(Clone, Debug)]
@@ -216,7 +216,8 @@ impl MonitorService {
     }
 
     pub fn is_ready(&self) -> bool {
-        self.has_configured_safe_wallet() && self.active_agents() >= self.config.minimum_active_agents
+        self.has_configured_safe_wallet()
+            && self.active_agents() >= self.config.minimum_active_agents
     }
 
     pub fn active_agents(&self) -> usize {
@@ -235,8 +236,8 @@ impl MonitorService {
 #[cfg(test)]
 mod tests {
     use crate::{
-        AgentHeartbeat, AgentRole, MonitorConfig, MonitorService, Stablecoin,
-        OperatorReleaseRequest, TransactionIntakeRequest,
+        AgentHeartbeat, AgentRole, MonitorConfig, MonitorService, OperatorReleaseRequest,
+        Stablecoin, TransactionIntakeRequest,
     };
 
     #[test]
