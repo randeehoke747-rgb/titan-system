@@ -32,11 +32,13 @@ impl MonitorService {
     }
 
     pub fn register_or_update_agent(&mut self, heartbeat: AgentHeartbeat) {
+        let agent_name = heartbeat.agent_name;
+        let role = heartbeat.role;
         let entry = self
             .agents
-            .entry(heartbeat.agent_name.clone())
-            .or_insert_with(|| AutonomousAgent::new(heartbeat.agent_name, heartbeat.role));
-        entry.role = heartbeat.role;
+            .entry(agent_name.clone())
+            .or_insert_with(|| AutonomousAgent::new(agent_name, role.clone()));
+        entry.role = role;
         entry.recover();
     }
 
@@ -200,7 +202,7 @@ mod tests {
         let alert = service.ingest(TransactionIntakeRequest {
             transaction_id: Some("tx-2".into()),
             asset: Stablecoin::Usdt,
-            amount_cents: 250_000_00,
+            amount_cents: 25_000_000,
             source_wallet: "source-wallet".into(),
             destination_wallet: "unknown-wallet".into(),
         });

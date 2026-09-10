@@ -12,7 +12,7 @@ impl KeyCompromiseDetector {
     pub fn new(approved_destinations: impl IntoIterator<Item = String>) -> Self {
         Self {
             approved_destinations: approved_destinations.into_iter().collect(),
-            high_value_threshold_cents: 100_000_00,
+            high_value_threshold_cents: 10_000_000,
         }
     }
 
