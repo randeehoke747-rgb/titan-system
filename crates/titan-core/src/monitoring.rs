@@ -231,8 +231,9 @@ impl MonitorService {
         };
         self.audit_events.push(AuditEvent {
             event_id: format!(
-                "message-relayed-{session_id}-{}",
-                self.audit_events.len() + 1
+                "message-relayed-{session_id}-{}-{}",
+                session.transcript.len(),
+                session.last_activity_epoch_ms
             ),
             session_id: Some(session_id.to_owned()),
             agent_name: session.assigned_agent.clone(),
@@ -553,6 +554,28 @@ mod tests {
             .expect("relay should succeed");
         assert!(relay.response.contains("session-1"));
         assert_eq!(service.sessions()[0].transcript.len(), 2);
+    }
+
+    #[test]
+    fn relay_message_returns_missing_session_finding() {
+        let mut service = MonitorService::new(config());
+        let error = service
+            .relay_message(
+                "missing-session",
+                MessageRelayRequest {
+                    author: "discord-user".into(),
+                    author_kind: MessageAuthorKind::DiscordUser,
+                    body: "status?".into(),
+                },
+            )
+            .expect_err("missing session should fail");
+
+        assert_eq!(error.len(), 1);
+        assert_eq!(error[0].code, "session_not_found");
+        assert_eq!(
+            error[0].message,
+            "Hunter session missing-session was not found."
+        );
     }
 
     #[test]

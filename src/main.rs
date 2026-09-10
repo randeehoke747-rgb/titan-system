@@ -126,11 +126,6 @@ fn findings_status(findings: &[Vulnerability]) -> StatusCode {
             .any(|finding| finding.code == "session_not_found")
     {
         StatusCode::NOT_FOUND
-    } else if findings
-        .iter()
-        .any(|finding| finding.code.contains("allowlisted"))
-    {
-        StatusCode::FORBIDDEN
     } else {
         StatusCode::BAD_REQUEST
     }
