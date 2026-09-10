@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: iron-giant
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: WEB_CONCURRENCY
+        value: unlimited
+      - key: RUST_LOG
+        value: info
+      - key: TITAN_CHAIN_ID
+        value: "1"
+      - key: TITAN_RPC_WS_URL
+        sync: false
+      - key: TITAN_USDC_CONTRACTS
+        sync: false
+      - key: TITAN_USDT_CONTRACTS
+        sync: false
+      - key: TITAN_QUARANTINE_WALLET
+        value: "0xCE4A926070c0544052de1E56d1254eaac79b77be"
