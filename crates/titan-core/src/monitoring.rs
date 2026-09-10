@@ -267,7 +267,10 @@ impl MonitorService {
             session_id: Some(session_id.to_owned()),
             agent_name: session.assigned_agent.clone(),
             kind: AuditEventKind::SessionClosed,
-            detail: format!("Operator {} closed session {}.", request.operator_id, session_id),
+            detail: format!(
+                "Operator {} closed session {}.",
+                request.operator_id, session_id
+            ),
             recorded_at_epoch_ms: now,
         });
         self.record_command(
@@ -287,10 +290,14 @@ impl MonitorService {
             DiscordCommandKind::SpawnClone => {
                 let session = self.create_session(SessionCreateRequest {
                     session_id: request.session_id,
-                    clone_name: request.clone_name.unwrap_or_else(|| self.config.hunter_identity.clone()),
+                    clone_name: request
+                        .clone_name
+                        .unwrap_or_else(|| self.config.hunter_identity.clone()),
                     requested_agent: request.requested_agent,
                     discord_context: request.context,
-                    initial_prompt: request.content.unwrap_or_else(|| "Hunter clone session started.".into()),
+                    initial_prompt: request
+                        .content
+                        .unwrap_or_else(|| "Hunter clone session started.".into()),
                 })?;
                 Ok(DiscordDispatch {
                     acknowledged: true,
@@ -360,7 +367,11 @@ impl MonitorService {
             }
             DiscordCommandKind::SessionStatus => {
                 let session_id = request.session_id.unwrap_or_default();
-                let session = self.sessions.get(&session_id).cloned().ok_or_else(Vec::new)?;
+                let session = self
+                    .sessions
+                    .get(&session_id)
+                    .cloned()
+                    .ok_or_else(Vec::new)?;
                 Ok(DiscordDispatch {
                     acknowledged: true,
                     session_id: Some(session.session_id.clone()),
@@ -390,7 +401,12 @@ impl MonitorService {
         let active_sessions = self
             .sessions
             .values()
-            .filter(|session| matches!(session.state, SessionState::Active | SessionState::WaitingForAgent))
+            .filter(|session| {
+                matches!(
+                    session.state,
+                    SessionState::Active | SessionState::WaitingForAgent
+                )
+            })
             .count();
         let closed_sessions = self
             .sessions
@@ -469,8 +485,8 @@ fn session_author(session_id: &str) -> String {
 mod tests {
     use crate::{
         AgentCapability, AgentHeartbeat, AgentKind, AssignAgentRequest, CloseSessionRequest,
-        DiscordCommandKind, DiscordCommandRequest, DiscordContext, HunterConfig,
-        MessageAuthorKind, MessageRelayRequest, MonitorService, SessionCreateRequest, SessionState,
+        DiscordCommandKind, DiscordCommandRequest, DiscordContext, HunterConfig, MessageAuthorKind,
+        MessageRelayRequest, MonitorService, SessionCreateRequest, SessionState,
     };
 
     fn config() -> HunterConfig {
@@ -599,7 +615,9 @@ mod tests {
                 initial_prompt: "hello".into(),
             })
             .expect_err("blocked channel should fail");
-        assert!(error.iter().any(|finding| finding.code == "channel_not_allowlisted"));
+        assert!(error
+            .iter()
+            .any(|finding| finding.code == "channel_not_allowlisted"));
     }
 
     #[test]
