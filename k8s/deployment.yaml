@@ -34,6 +34,27 @@ spec:
             - name: NODE_ROLE
               value: "control-plane"
 
+            - name: DISCORD_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hunter-bot-secrets
+                  key: discord-bot-token
+                  optional: true
+
+            - name: OPERATOR_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hunter-bot-secrets
+                  key: operator-api-token
+                  optional: true
+
+            - name: DISCORD_INGEST_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hunter-bot-secrets
+                  key: discord-ingest-token
+                  optional: true
+
             - name: SAFE_WALLET_ADDRESS
               value: "SAFE-WALLET-UNCONFIGURED"
 
