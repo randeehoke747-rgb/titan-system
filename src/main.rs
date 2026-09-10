@@ -66,7 +66,8 @@ async fn persist_snapshot(path: &PathBuf, snapshot: &MonitorSnapshot) -> Result<
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     }
-    let body = serde_json::to_vec_pretty(snapshot).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let body =
+        serde_json::to_vec_pretty(snapshot).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     tokio::fs::write(path, body)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
