@@ -1,5 +1,5 @@
 # titan-system
-Hunter clone control plane for Titan AI agents, built with Rust and Axum.
+Hunter bot control plane for Titan AI agents, built with Rust and Axum.
 
 ## Hunter bot endpoints
 - `GET /` returns the same liveness payload as `/health`.
@@ -10,7 +10,7 @@ Hunter clone control plane for Titan AI agents, built with Rust and Axum.
 - `GET /commands` lists recorded Discord command dispatch events.
 - `GET /sessions` lists tracked Hunter sessions.
 - `POST /sessions` creates a Hunter clone session from a Discord context payload.
-- `POST /sessions/{session_id}/assign` requires a bearer token and assigns a Titan agent clone to the session.
+- `POST /sessions/{session_id}/assign` requires a bearer token and assigns a Hunter-supporting agent clone to the session.
 - `POST /sessions/{session_id}/messages` relays user, clone, operator, or system messages into the session transcript.
 - `POST /sessions/{session_id}/close` requires a bearer token and closes a Hunter session.
 - `POST /agents/heartbeat` refreshes Hunter clone heartbeat, capability, and assignment state.
@@ -29,3 +29,7 @@ Hunter clone control plane for Titan AI agents, built with Rust and Axum.
 - `DISCORD_INGEST_TOKEN` enables authenticated Discord command ingestion.
 - `MONITOR_STATE_PATH` persists clone, session, command, and audit state to JSON.
 - `STRICT_STARTUP=true` makes the service fail fast on boot if required Hunter configuration is missing.
+
+## Kubernetes deployment
+- The existing `k8s/deployment.yaml` flow remains unchanged and now wires Hunter bot runtime secrets from the optional `hunter-bot-secrets` Secret when present.
+- Supported secret keys are `discord-bot-token`, `operator-api-token`, and `discord-ingest-token`.

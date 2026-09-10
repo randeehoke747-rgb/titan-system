@@ -3,7 +3,7 @@ set -euo pipefail
 
 IMAGE="titan-system:local"
 
-echo "==> Building Titan"
+echo "==> Building Hunter bot control plane"
 docker build -t "$IMAGE" .
 
 echo "==> Checking Kubernetes"
@@ -23,7 +23,7 @@ kubectl -n titan rollout status \
     --timeout=120s
 
 echo
-echo "Titan deployment is ready."
+echo "Hunter bot deployment is ready."
 
 echo
 kubectl -n titan get pods
