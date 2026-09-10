@@ -241,12 +241,10 @@ mod tests {
         });
 
         assert!(alert.requires_operator_review);
-        assert!(
-            alert
-                .findings
-                .iter()
-                .any(|finding| finding.code == "usdc_high_alert")
-        );
+        assert!(alert
+            .findings
+            .iter()
+            .any(|finding| finding.code == "usdc_high_alert"));
     }
 
     #[test]
