@@ -16,3 +16,4 @@ Titan control plane: Rust-based distributed system with Kubernetes orchestration
 - `SAFE_WALLET_ADDRESS` sets the temporary safe wallet destination.
 - `APPROVED_DESTINATIONS` is a comma-separated allowlist of release destinations.
 - `MINIMUM_ACTIVE_AGENTS` sets the readiness threshold for healthy monitor agents.
+- `PORT` overrides the default HTTP bind port of `8080` for Render-compatible deployments.

@@ -98,9 +98,16 @@ async fn report_agent_failure(
     }
 }
 
+fn port_from_env() -> u16 {
+    std::env::var("PORT")
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .unwrap_or(8080)
+}
+
 fn monitor_from_env() -> MonitorService {
-    let safe_wallet = std::env::var("SAFE_WALLET_ADDRESS")
-        .unwrap_or_else(|_| "SAFE-WALLET-UNCONFIGURED".into());
+    let safe_wallet =
+        std::env::var("SAFE_WALLET_ADDRESS").unwrap_or_else(|_| "SAFE-WALLET-UNCONFIGURED".into());
     let approved_destinations = std::env::var("APPROVED_DESTINATIONS")
         .ok()
         .map(|value| {
@@ -126,7 +133,10 @@ fn monitor_from_env() -> MonitorService {
     for (name, role) in [
         ("sentinel-intake", AgentRole::Intake),
         ("sentinel-risk-review", AgentRole::RiskReview),
-        ("sentinel-release-coordinator", AgentRole::ReleaseCoordinator),
+        (
+            "sentinel-release-coordinator",
+            AgentRole::ReleaseCoordinator,
+        ),
     ] {
         monitor.register_or_update_agent(AgentHeartbeat {
             agent_name: name.into(),
@@ -148,24 +158,29 @@ async fn main() {
     };
 
     let app = Router::new()
+        .route("/", get(health))
         .route("/health", get(health))
         .route("/ready", get(ready))
         .route("/status", get(status))
         .route("/alerts", get(alerts))
         .route("/transactions/held", get(held_transactions))
         .route("/transactions/intake", post(ingest_transaction))
-        .route("/transactions/:transaction_id/release", post(release_transaction))
+        .route(
+            "/transactions/:transaction_id/release",
+            post(release_transaction),
+        )
         .route("/agents/heartbeat", post(register_heartbeat))
         .route("/agents/:agent_name/failure", post(report_agent_failure))
         .with_state(app_state);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
+    let port = port_from_env();
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
 
     info!("Titan control plane listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr)
         .await
-        .expect("failed to bind port 8080");
+        .unwrap_or_else(|error| panic!("failed to bind port {port}: {error}"));
 
     axum::serve(listener, app)
         .await

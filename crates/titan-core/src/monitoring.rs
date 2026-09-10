@@ -1,4 +1,7 @@
-use std::{collections::HashMap, time::{SystemTime, UNIX_EPOCH}};
+use std::{
+    collections::HashMap,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use crate::{
     AgentHeartbeat, AutonomousAgent, KeyCompromiseDetector, MonitorConfig, MonitorStatus,
@@ -142,13 +145,19 @@ impl MonitorService {
     }
 
     pub fn active_agents(&self) -> usize {
-        self.agents.values().filter(|agent| agent.is_healthy()).count()
+        self.agents
+            .values()
+            .filter(|agent| agent.is_healthy())
+            .count()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{AgentHeartbeat, AgentRole, MonitorConfig, MonitorService, Stablecoin, TransactionIntakeRequest};
+    use crate::{
+        AgentHeartbeat, AgentRole, MonitorConfig, MonitorService, Stablecoin,
+        TransactionIntakeRequest,
+    };
 
     #[test]
     fn intake_places_transaction_on_hold_in_safe_wallet() {
