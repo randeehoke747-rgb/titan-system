@@ -1,12 +1,13 @@
-/home/runner/work/titan-system/titan-system/target/debug/deps/titan_core-6106212d85241b41.d: crates/titan-core/src/lib.rs crates/titan-core/src/ai_agent.rs crates/titan-core/src/attack_security.rs crates/titan-core/src/monitoring.rs crates/titan-core/src/transaction.rs crates/titan-core/src/vulnerability.rs Cargo.toml
+/home/runner/work/titan-system/titan-system/target/debug/deps/titan_core-6106212d85241b41.d: crates/titan-core/src/lib.rs crates/titan-core/src/ai_agent.rs crates/titan-core/src/attack_security.rs crates/titan-core/src/discord.rs crates/titan-core/src/monitoring.rs crates/titan-core/src/session.rs crates/titan-core/src/vulnerability.rs Cargo.toml
 
-/home/runner/work/titan-system/titan-system/target/debug/deps/libtitan_core-6106212d85241b41.rmeta: crates/titan-core/src/lib.rs crates/titan-core/src/ai_agent.rs crates/titan-core/src/attack_security.rs crates/titan-core/src/monitoring.rs crates/titan-core/src/transaction.rs crates/titan-core/src/vulnerability.rs Cargo.toml
+/home/runner/work/titan-system/titan-system/target/debug/deps/libtitan_core-6106212d85241b41.rmeta: crates/titan-core/src/lib.rs crates/titan-core/src/ai_agent.rs crates/titan-core/src/attack_security.rs crates/titan-core/src/discord.rs crates/titan-core/src/monitoring.rs crates/titan-core/src/session.rs crates/titan-core/src/vulnerability.rs Cargo.toml
 
 crates/titan-core/src/lib.rs:
 crates/titan-core/src/ai_agent.rs:
 crates/titan-core/src/attack_security.rs:
+crates/titan-core/src/discord.rs:
 crates/titan-core/src/monitoring.rs:
-crates/titan-core/src/transaction.rs:
+crates/titan-core/src/session.rs:
 crates/titan-core/src/vulnerability.rs:
 Cargo.toml:
 
