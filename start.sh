@@ -23,7 +23,7 @@ kubectl -n titan rollout status \
     --timeout=120s
 
 echo
-echo "Hunter bot deployment is ready."
+echo "Hunter bot deployment is ready in the existing titan namespace."
 
 echo
 kubectl -n titan get pods

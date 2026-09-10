@@ -31,5 +31,5 @@ Hunter bot control plane for Titan AI agents, built with Rust and Axum.
 - `STRICT_STARTUP=true` makes the service fail fast on boot if required Hunter configuration is missing.
 
 ## Kubernetes deployment
-- `k8s/deployment.yaml` keeps the existing Titan resource and image naming while optionally wiring Hunter bot runtime secrets from the `hunter-bot-secrets` Secret when present.
+- `k8s/deployment.yaml` keeps the existing Titan resource and image naming while optionally wiring Hunter bot runtime secrets from the `hunter-bot-secrets` Secret in the `titan` namespace when present.
 - Supported secret keys are `discord-bot-token`, `operator-api-token`, and `discord-ingest-token`.
