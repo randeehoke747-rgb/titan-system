@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::{StablecoinTransaction, Vulnerability, VulnerabilityLevel};
+use crate::{Stablecoin, StablecoinTransaction, Vulnerability, VulnerabilityLevel};
 
 #[derive(Clone, Debug)]
 pub struct KeyCompromiseDetector {
@@ -18,6 +18,14 @@ impl KeyCompromiseDetector {
 
     pub fn inspect(&self, transaction: &StablecoinTransaction) -> Vec<Vulnerability> {
         let mut findings = Vec::new();
+
+        if transaction.asset == Stablecoin::Usdc {
+            findings.push(Vulnerability::new(
+                "usdc_high_alert",
+                "All authorized USDC transactions are placed into mandatory high-alert operator review.",
+                VulnerabilityLevel::Critical,
+            ));
+        }
 
         if transaction.amount_cents == 0 {
             findings.push(Vulnerability::new(

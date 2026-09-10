@@ -8,7 +8,7 @@ Titan control plane: Rust-based distributed system with Kubernetes orchestration
 - `GET /status` returns queue, hold, release, redundancy, auth, and persistence status.
 - `GET /alerts` lists queued review alerts for suspicious transfers.
 - `GET /transactions/held` lists transactions currently held in the safe wallet queue.
-- `POST /transactions/intake` accepts authorized USDC/USDT intake requests and places them on temporary hold.
+- `POST /transactions/intake` accepts authorized USDC/USDT intake requests and places them on temporary hold, with all USDC requests automatically treated as high-alert operator-review items.
 - `POST /transactions/{transaction_id}/release` requires a bearer token and records an operator-approved release.
 - `POST /agents/heartbeat` refreshes redundant monitor agents.
 - `POST /agents/{agent_name}/failure` records repeated agent failure for failover visibility.

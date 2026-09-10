@@ -217,10 +217,36 @@ mod tests {
             destination_wallet: "customer-wallet".into(),
         });
 
-        assert!(!alert.requires_operator_review);
+        assert!(alert.requires_operator_review);
+        assert_eq!(service.alerts().len(), 1);
         let held = service.held_transactions();
         assert_eq!(held.len(), 1);
         assert_eq!(held[0].safe_wallet, "safe-wallet");
+    }
+
+    #[test]
+    fn usdc_transactions_are_always_high_alert() {
+        let mut service = MonitorService::new(MonitorConfig {
+            safe_wallet: "safe-wallet".into(),
+            approved_destinations: vec!["approved-wallet".into()],
+            minimum_active_agents: 1,
+        });
+
+        let alert = service.ingest(TransactionIntakeRequest {
+            transaction_id: Some("tx-usdc".into()),
+            asset: Stablecoin::Usdc,
+            amount_cents: 10_000,
+            source_wallet: "source-wallet".into(),
+            destination_wallet: "approved-wallet".into(),
+        });
+
+        assert!(alert.requires_operator_review);
+        assert!(
+            alert
+                .findings
+                .iter()
+                .any(|finding| finding.code == "usdc_high_alert")
+        );
     }
 
     #[test]
