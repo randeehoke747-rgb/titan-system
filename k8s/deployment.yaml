@@ -34,9 +34,6 @@ spec:
             - name: NODE_ROLE
               value: "control-plane"
 
-            - name: HUNTER_IDENTITY
-              value: "hunter-prime"
-
             - name: DISCORD_BOT_TOKEN
               valueFrom:
                 secretKeyRef:
