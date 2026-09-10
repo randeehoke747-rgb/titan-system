@@ -1,68 +1,57 @@
-use std::collections::HashSet;
+use crate::{DiscordContext, HunterConfig, Vulnerability, VulnerabilityLevel};
 
-use crate::{Stablecoin, StablecoinTransaction, Vulnerability, VulnerabilityLevel};
+#[derive(Clone, Debug, Default)]
+pub struct CommandSafetyInspector;
 
-#[derive(Clone, Debug)]
-pub struct KeyCompromiseDetector {
-    approved_destinations: HashSet<String>,
-    high_value_threshold_cents: u64,
-}
-
-impl KeyCompromiseDetector {
-    pub fn new(approved_destinations: impl IntoIterator<Item = String>) -> Self {
-        Self {
-            approved_destinations: approved_destinations.into_iter().collect(),
-            high_value_threshold_cents: 10_000_000,
-        }
+impl CommandSafetyInspector {
+    pub fn new() -> Self {
+        Self
     }
 
-    pub fn inspect(&self, transaction: &StablecoinTransaction) -> Vec<Vulnerability> {
+    pub fn inspect_context(
+        &self,
+        context: &DiscordContext,
+        config: &HunterConfig,
+    ) -> Vec<Vulnerability> {
         let mut findings = Vec::new();
 
-        if transaction.asset == Stablecoin::Usdc {
+        if !config.allowed_guilds.is_empty() && !config.allowed_guilds.contains(&context.guild_id) {
             findings.push(Vulnerability::new(
-                "usdc_high_alert",
-                "All authorized USDC transactions are placed into mandatory high-alert operator review.",
+                "guild_not_allowlisted",
+                "Discord guild is not allowlisted for Hunter session intake.",
                 VulnerabilityLevel::Critical,
             ));
         }
 
-        if transaction.amount_cents == 0 {
+        if !config.allowed_channels.is_empty()
+            && !config.allowed_channels.contains(&context.channel_id)
+        {
             findings.push(Vulnerability::new(
-                "zero_amount",
-                "Zero-value transactions should be reviewed before release.",
+                "channel_not_allowlisted",
+                "Discord channel is not allowlisted for Hunter session intake.",
+                VulnerabilityLevel::High,
+            ));
+        }
+
+        findings
+    }
+
+    pub fn inspect_message(&self, body: &str) -> Vec<Vulnerability> {
+        let mut findings = Vec::new();
+        if body.trim().is_empty() {
+            findings.push(Vulnerability::new(
+                "empty_message",
+                "Empty relay messages are rejected.",
                 VulnerabilityLevel::Medium,
             ));
         }
-
-        if transaction.source_wallet == transaction.destination_wallet {
+        if body.len() > 4_000 {
             findings.push(Vulnerability::new(
-                "same_source_destination",
-                "Source and destination wallets should not be identical.",
+                "message_too_large",
+                "Relay messages above 4000 characters are rejected.",
                 VulnerabilityLevel::High,
             ));
         }
-
-        if !self.approved_destinations.is_empty()
-            && !self
-                .approved_destinations
-                .contains(&transaction.destination_wallet)
-        {
-            findings.push(Vulnerability::new(
-                "destination_not_allowlisted",
-                "Destination wallet is not on the approved allowlist.",
-                VulnerabilityLevel::Critical,
-            ));
-        }
-
-        if transaction.amount_cents >= self.high_value_threshold_cents {
-            findings.push(Vulnerability::new(
-                "high_value_transfer",
-                "High-value stablecoin transfer exceeds the review threshold.",
-                VulnerabilityLevel::High,
-            ));
-        }
-
         findings
     }
 }

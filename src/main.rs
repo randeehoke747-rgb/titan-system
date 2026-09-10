@@ -7,8 +7,10 @@ use axum::{
 use serde_json::json;
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use titan_core::{
-    AgentHeartbeat, AgentRole, AuditEvent, MonitorConfig, MonitorService, MonitorSnapshot,
-    MonitorStatus, OperatorReleaseRequest, TransactionAlert, TransactionIntakeRequest,
+    AgentCapability, AgentHeartbeat, AgentKind, AssignAgentRequest, AuditEvent,
+    CloseSessionRequest, CommandEvent, DiscordCommandRequest, HunterConfig, HunterSession,
+    MessageRelayRequest, MonitorService, MonitorSnapshot, MonitorStatus, SessionCreateRequest,
+    Vulnerability,
 };
 use tokio::sync::RwLock;
 use tracing::info;
@@ -17,35 +19,37 @@ use tracing::info;
 struct AppState {
     monitor: Arc<RwLock<MonitorService>>,
     operator_api_token: Option<String>,
+    discord_bot_token: Option<String>,
+    discord_ingest_token: Option<String>,
     monitor_state_path: Option<PathBuf>,
 }
 
 #[derive(Clone)]
 struct RuntimeConfig {
     operator_api_token: Option<String>,
+    discord_bot_token: Option<String>,
+    discord_ingest_token: Option<String>,
     monitor_state_path: Option<PathBuf>,
     strict_startup: bool,
 }
 
-fn operator_api_token_from_env() -> Option<String> {
-    std::env::var("OPERATOR_API_TOKEN")
+fn env_token(name: &str) -> Option<String> {
+    std::env::var(name)
         .ok()
         .map(|value| value.trim().to_owned())
         .filter(|value| !value.is_empty())
 }
 
-fn monitor_state_path_from_env() -> Option<PathBuf> {
-    std::env::var("MONITOR_STATE_PATH")
-        .ok()
-        .map(|value| value.trim().to_owned())
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
+fn path_from_env(name: &str) -> Option<PathBuf> {
+    env_token(name).map(PathBuf::from)
 }
 
 fn runtime_config_from_env() -> RuntimeConfig {
     RuntimeConfig {
-        operator_api_token: operator_api_token_from_env(),
-        monitor_state_path: monitor_state_path_from_env(),
+        operator_api_token: env_token("OPERATOR_API_TOKEN"),
+        discord_bot_token: env_token("DISCORD_BOT_TOKEN"),
+        discord_ingest_token: env_token("DISCORD_INGEST_TOKEN"),
+        monitor_state_path: path_from_env("MONITOR_STATE_PATH"),
         strict_startup: strict_startup_from_env(),
     }
 }
@@ -60,18 +64,45 @@ fn strict_startup_from_env() -> bool {
     )
 }
 
-fn safe_wallet_configured(config: &MonitorConfig) -> bool {
-    let safe_wallet = config.safe_wallet.trim();
-    !safe_wallet.is_empty() && safe_wallet != "SAFE-WALLET-UNCONFIGURED"
+fn parse_csv_env(name: &str) -> Vec<String> {
+    std::env::var(name)
+        .ok()
+        .map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
-fn configuration_errors(config: &MonitorConfig, runtime_config: &RuntimeConfig) -> Vec<String> {
+fn hunter_config_from_env() -> HunterConfig {
+    HunterConfig {
+        hunter_identity: env_token("HUNTER_IDENTITY").unwrap_or_else(|| "hunter-prime".into()),
+        allowed_guilds: parse_csv_env("ALLOWED_GUILDS"),
+        allowed_channels: parse_csv_env("ALLOWED_CHANNELS"),
+        minimum_active_agents: std::env::var("MINIMUM_ACTIVE_AGENTS")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(2),
+    }
+}
+
+fn configuration_errors(config: &HunterConfig, runtime_config: &RuntimeConfig) -> Vec<String> {
     let mut errors = Vec::new();
-    if !safe_wallet_configured(config) {
-        errors.push("SAFE_WALLET_ADDRESS is not configured.".to_owned());
+    if config.hunter_identity.trim().is_empty() {
+        errors.push("HUNTER_IDENTITY is not configured.".to_owned());
+    }
+    if runtime_config.discord_bot_token.is_none() {
+        errors.push("DISCORD_BOT_TOKEN is not configured.".to_owned());
     }
     if runtime_config.operator_api_token.is_none() {
         errors.push("OPERATOR_API_TOKEN is not configured.".to_owned());
+    }
+    if runtime_config.discord_ingest_token.is_none() {
+        errors.push("DISCORD_INGEST_TOKEN is not configured.".to_owned());
     }
     errors
 }
@@ -105,15 +136,16 @@ async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
     let monitor = state.monitor.read().await;
     Json(json!({
         "status": "ok",
-        "service": "titan-control-plane",
-        "ready": monitor.is_ready(),
+        "service": "hunter-clone-control-plane",
+        "ready": monitor.is_ready(state.discord_bot_token.is_some()),
         "active_agents": monitor.active_agents(),
+        "available_agents": monitor.available_agents(),
     }))
 }
 
 async fn ready(State(state): State<AppState>) -> Result<Json<serde_json::Value>, StatusCode> {
     let monitor = state.monitor.read().await;
-    if monitor.is_ready() {
+    if monitor.is_ready(state.discord_bot_token.is_some()) {
         Ok(Json(json!({
             "status": "ready"
         })))
@@ -124,16 +156,19 @@ async fn ready(State(state): State<AppState>) -> Result<Json<serde_json::Value>,
 
 async fn status(State(state): State<AppState>) -> Json<serde_json::Value> {
     let monitor = state.monitor.read().await;
-    let monitor_status: MonitorStatus = monitor.status();
-    let config = monitor_config_from_env();
+    let monitor_status: MonitorStatus = monitor.status(state.discord_bot_token.is_some());
+    let config = hunter_config_from_env();
     let runtime_config = RuntimeConfig {
         operator_api_token: state.operator_api_token.clone(),
+        discord_bot_token: state.discord_bot_token.clone(),
+        discord_ingest_token: state.discord_ingest_token.clone(),
         monitor_state_path: state.monitor_state_path.clone(),
         strict_startup: strict_startup_from_env(),
     };
     Json(json!({
         "monitor": monitor_status,
         "operator_auth_configured": state.operator_api_token.is_some(),
+        "discord_ingest_auth_configured": state.discord_ingest_token.is_some(),
         "persistence_enabled": state.monitor_state_path.is_some(),
         "strict_startup": runtime_config.strict_startup,
         "configuration_errors": configuration_errors(&config, &runtime_config),
@@ -145,56 +180,49 @@ async fn history(State(state): State<AppState>) -> Json<Vec<AuditEvent>> {
     Json(monitor.audit_history().to_vec())
 }
 
-async fn alerts(State(state): State<AppState>) -> Json<Vec<TransactionAlert>> {
+async fn commands(State(state): State<AppState>) -> Json<Vec<CommandEvent>> {
     let monitor = state.monitor.read().await;
-    Json(monitor.alerts().to_vec())
+    Json(monitor.command_events().to_vec())
 }
 
-async fn held_transactions(
-    State(state): State<AppState>,
-) -> Json<Vec<titan_core::StablecoinTransaction>> {
+async fn sessions(State(state): State<AppState>) -> Json<Vec<HunterSession>> {
     let monitor = state.monitor.read().await;
-    Json(monitor.held_transactions())
+    Json(monitor.sessions())
 }
 
-async fn ingest_transaction(
+async fn create_session(
     State(state): State<AppState>,
-    Json(payload): Json<TransactionIntakeRequest>,
-) -> (StatusCode, Json<titan_core::TransactionAlert>) {
+    Json(payload): Json<SessionCreateRequest>,
+) -> Result<(StatusCode, Json<HunterSession>), (StatusCode, Json<Vec<Vulnerability>>)> {
     let mut monitor = state.monitor.write().await;
-    let alert = monitor.ingest(payload);
+    let session = monitor
+        .create_session(payload)
+        .map_err(|findings| (StatusCode::FORBIDDEN, Json(findings)))?;
     let snapshot = state
         .monitor_state_path
         .as_ref()
         .map(|_| monitor.snapshot());
     drop(monitor);
     if let (Some(path), Some(snapshot)) = (&state.monitor_state_path, snapshot.as_ref()) {
-        if persist_snapshot(path, snapshot).await.is_err() {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(TransactionAlert {
-                    transaction_id: alert.transaction_id,
-                    findings: alert.findings,
-                    requires_operator_review: true,
-                }),
-            );
-        }
+        persist_snapshot(path, snapshot)
+            .await
+            .map_err(|status| (status, Json(Vec::new())))?;
     }
-    (StatusCode::ACCEPTED, Json(alert))
+    Ok((StatusCode::ACCEPTED, Json(session)))
 }
 
-async fn release_transaction(
+async fn assign_session(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path(transaction_id): Path<String>,
-    Json(payload): Json<OperatorReleaseRequest>,
-) -> Result<Json<titan_core::StablecoinTransaction>, StatusCode> {
+    Path(session_id): Path<String>,
+    Json(payload): Json<AssignAgentRequest>,
+) -> Result<Json<HunterSession>, StatusCode> {
     if !is_authorized(&headers, state.operator_api_token.as_deref()) {
         return Err(StatusCode::UNAUTHORIZED);
     }
     let mut monitor = state.monitor.write().await;
-    let released = monitor
-        .release(&transaction_id, payload)
+    let session = monitor
+        .assign_agent(&session_id, payload)
         .ok_or(StatusCode::NOT_FOUND)?;
     let snapshot = state
         .monitor_state_path
@@ -204,7 +232,60 @@ async fn release_transaction(
     if let (Some(path), Some(snapshot)) = (&state.monitor_state_path, snapshot.as_ref()) {
         persist_snapshot(path, snapshot).await?;
     }
-    Ok(Json(released))
+    Ok(Json(session))
+}
+
+async fn relay_session_message(
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+    Json(payload): Json<MessageRelayRequest>,
+) -> Result<Json<HunterSession>, (StatusCode, Json<Vec<Vulnerability>>)> {
+    let mut monitor = state.monitor.write().await;
+    let session = monitor
+        .relay_message(&session_id, payload)
+        .map_err(|findings| {
+            let status = if findings.is_empty() {
+                StatusCode::NOT_FOUND
+            } else {
+                StatusCode::BAD_REQUEST
+            };
+            (status, Json(findings))
+        })?;
+    let snapshot = state
+        .monitor_state_path
+        .as_ref()
+        .map(|_| monitor.snapshot());
+    drop(monitor);
+    if let (Some(path), Some(snapshot)) = (&state.monitor_state_path, snapshot.as_ref()) {
+        persist_snapshot(path, snapshot)
+            .await
+            .map_err(|status| (status, Json(Vec::new())))?;
+    }
+    Ok(Json(session))
+}
+
+async fn close_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(session_id): Path<String>,
+    Json(payload): Json<CloseSessionRequest>,
+) -> Result<Json<HunterSession>, StatusCode> {
+    if !is_authorized(&headers, state.operator_api_token.as_deref()) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let mut monitor = state.monitor.write().await;
+    let session = monitor
+        .close_session(&session_id, payload)
+        .ok_or(StatusCode::NOT_FOUND)?;
+    let snapshot = state
+        .monitor_state_path
+        .as_ref()
+        .map(|_| monitor.snapshot());
+    drop(monitor);
+    if let (Some(path), Some(snapshot)) = (&state.monitor_state_path, snapshot.as_ref()) {
+        persist_snapshot(path, snapshot).await?;
+    }
+    Ok(Json(session))
 }
 
 async fn register_heartbeat(
@@ -228,8 +309,12 @@ async fn register_heartbeat(
 
 async fn report_agent_failure(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(agent_name): Path<String>,
 ) -> StatusCode {
+    if !is_authorized(&headers, state.operator_api_token.as_deref()) {
+        return StatusCode::UNAUTHORIZED;
+    }
     let mut monitor = state.monitor.write().await;
     if monitor.mark_agent_failure(&agent_name) {
         let snapshot = state
@@ -248,6 +333,38 @@ async fn report_agent_failure(
     }
 }
 
+async fn dispatch_discord_command(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<DiscordCommandRequest>,
+) -> Result<Json<titan_core::DiscordDispatch>, (StatusCode, Json<Vec<Vulnerability>>)> {
+    if !is_authorized(&headers, state.discord_ingest_token.as_deref()) {
+        return Err((StatusCode::UNAUTHORIZED, Json(Vec::new())));
+    }
+    let mut monitor = state.monitor.write().await;
+    let dispatch = monitor.handle_discord_command(payload).map_err(|findings| {
+        let status = if findings.is_empty() {
+            StatusCode::NOT_FOUND
+        } else if findings.iter().any(|finding| finding.code.contains("allowlisted")) {
+            StatusCode::FORBIDDEN
+        } else {
+            StatusCode::BAD_REQUEST
+        };
+        (status, Json(findings))
+    })?;
+    let snapshot = state
+        .monitor_state_path
+        .as_ref()
+        .map(|_| monitor.snapshot());
+    drop(monitor);
+    if let (Some(path), Some(snapshot)) = (&state.monitor_state_path, snapshot.as_ref()) {
+        persist_snapshot(path, snapshot)
+            .await
+            .map_err(|status| (status, Json(Vec::new())))?;
+    }
+    Ok(Json(dispatch))
+}
+
 fn port_from_env() -> u16 {
     std::env::var("PORT")
         .ok()
@@ -255,50 +372,53 @@ fn port_from_env() -> u16 {
         .unwrap_or(8080)
 }
 
-fn monitor_config_from_env() -> MonitorConfig {
-    let safe_wallet =
-        std::env::var("SAFE_WALLET_ADDRESS").unwrap_or_else(|_| "SAFE-WALLET-UNCONFIGURED".into());
-    let approved_destinations = std::env::var("APPROVED_DESTINATIONS")
-        .ok()
-        .map(|value| {
-            value
-                .split(',')
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(ToOwned::to_owned)
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    let minimum_active_agents = std::env::var("MINIMUM_ACTIVE_AGENTS")
-        .ok()
-        .and_then(|value| value.parse::<usize>().ok())
-        .unwrap_or(2);
+fn parse_kind(value: &str) -> AgentKind {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "strategist" => AgentKind::Strategist,
+        "researcher" => AgentKind::Researcher,
+        "builder" => AgentKind::Builder,
+        "sentinel" => AgentKind::Sentinel,
+        _ => AgentKind::Hunter,
+    }
+}
 
-    MonitorConfig {
-        safe_wallet,
-        approved_destinations,
-        minimum_active_agents,
+fn parse_capability(value: &str) -> Option<AgentCapability> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "session_intake" => Some(AgentCapability::SessionIntake),
+        "message_relay" => Some(AgentCapability::MessageRelay),
+        "task_execution" => Some(AgentCapability::TaskExecution),
+        "knowledge_retrieval" => Some(AgentCapability::KnowledgeRetrieval),
+        "moderation" => Some(AgentCapability::Moderation),
+        _ => None,
     }
 }
 
 fn seed_agents(monitor: &mut MonitorService) {
-    for (name, role) in [
-        ("sentinel-intake", AgentRole::Intake),
-        ("sentinel-risk-review", AgentRole::RiskReview),
-        (
-            "sentinel-release-coordinator",
-            AgentRole::ReleaseCoordinator,
-        ),
-    ] {
+    let definitions = std::env::var("HUNTER_CLONES").unwrap_or_else(|_| {
+        "hunter-prime:hunter:session_intake|message_relay;strategist-1:strategist:knowledge_retrieval;builder-1:builder:task_execution".into()
+    });
+
+    for definition in definitions.split(';').map(str::trim).filter(|value| !value.is_empty()) {
+        let mut parts = definition.split(':');
+        let Some(name) = parts.next().map(str::trim).filter(|value| !value.is_empty()) else {
+            continue;
+        };
+        let kind = parts.next().map(parse_kind).unwrap_or(AgentKind::Hunter);
+        let capabilities = parts
+            .next()
+            .map(|value| value.split('|').filter_map(parse_capability).collect())
+            .unwrap_or_else(Vec::new);
         monitor.register_or_update_agent(AgentHeartbeat {
-            agent_name: name.into(),
-            role,
+            agent_name: name.to_owned(),
+            kind,
+            capabilities,
+            assigned_session_id: None,
         });
     }
 }
 
 async fn monitor_from_env(runtime_config: &RuntimeConfig) -> MonitorService {
-    let config = monitor_config_from_env();
+    let config = hunter_config_from_env();
     let loaded_snapshot = if let Some(path) = &runtime_config.monitor_state_path {
         tokio::fs::read(path)
             .await
@@ -327,8 +447,8 @@ async fn main() {
         .init();
 
     let runtime_config = runtime_config_from_env();
-    let monitor_config = monitor_config_from_env();
-    let config_errors = configuration_errors(&monitor_config, &runtime_config);
+    let hunter_config = hunter_config_from_env();
+    let config_errors = configuration_errors(&hunter_config, &runtime_config);
     if runtime_config.strict_startup && !config_errors.is_empty() {
         panic!(
             "strict startup configuration errors: {}",
@@ -338,6 +458,8 @@ async fn main() {
     let app_state = AppState {
         monitor: Arc::new(RwLock::new(monitor_from_env(&runtime_config).await)),
         operator_api_token: runtime_config.operator_api_token,
+        discord_bot_token: runtime_config.discord_bot_token,
+        discord_ingest_token: runtime_config.discord_ingest_token,
         monitor_state_path: runtime_config.monitor_state_path,
     };
 
@@ -347,21 +469,20 @@ async fn main() {
         .route("/ready", get(ready))
         .route("/status", get(status))
         .route("/history", get(history))
-        .route("/alerts", get(alerts))
-        .route("/transactions/held", get(held_transactions))
-        .route("/transactions/intake", post(ingest_transaction))
-        .route(
-            "/transactions/:transaction_id/release",
-            post(release_transaction),
-        )
+        .route("/commands", get(commands))
+        .route("/sessions", get(sessions).post(create_session))
+        .route("/sessions/:session_id/assign", post(assign_session))
+        .route("/sessions/:session_id/messages", post(relay_session_message))
+        .route("/sessions/:session_id/close", post(close_session))
         .route("/agents/heartbeat", post(register_heartbeat))
         .route("/agents/:agent_name/failure", post(report_agent_failure))
+        .route("/discord/commands", post(dispatch_discord_command))
         .with_state(app_state);
 
     let port = port_from_env();
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
 
-    info!("Titan control plane listening on {}", addr);
+    info!("Hunter clone control plane listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr)
         .await
@@ -369,5 +490,5 @@ async fn main() {
 
     axum::serve(listener, app)
         .await
-        .expect("Titan server stopped");
+        .expect("Hunter clone server stopped");
 }
