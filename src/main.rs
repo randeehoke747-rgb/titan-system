@@ -119,6 +119,19 @@ fn is_authorized(headers: &HeaderMap, expected_token: Option<&str>) -> bool {
     }
 }
 
+fn findings_status(findings: &[Vulnerability]) -> StatusCode {
+    if findings.is_empty() || findings.iter().any(|finding| finding.code == "session_not_found") {
+        StatusCode::NOT_FOUND
+    } else if findings
+        .iter()
+        .any(|finding| finding.code.contains("allowlisted"))
+    {
+        StatusCode::FORBIDDEN
+    } else {
+        StatusCode::BAD_REQUEST
+    }
+}
+
 async fn persist_snapshot(path: &PathBuf, snapshot: &MonitorSnapshot) -> Result<(), StatusCode> {
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent)
@@ -243,14 +256,7 @@ async fn relay_session_message(
     let mut monitor = state.monitor.write().await;
     let session = monitor
         .relay_message(&session_id, payload)
-        .map_err(|findings| {
-            let status = if findings.is_empty() {
-                StatusCode::NOT_FOUND
-            } else {
-                StatusCode::BAD_REQUEST
-            };
-            (status, Json(findings))
-        })?;
+        .map_err(|findings| (findings_status(&findings), Json(findings)))?;
     let snapshot = state
         .monitor_state_path
         .as_ref()
@@ -344,19 +350,7 @@ async fn dispatch_discord_command(
     let mut monitor = state.monitor.write().await;
     let dispatch = monitor
         .handle_discord_command(payload)
-        .map_err(|findings| {
-            let status = if findings.is_empty() {
-                StatusCode::NOT_FOUND
-            } else if findings
-                .iter()
-                .any(|finding| finding.code.contains("allowlisted"))
-            {
-                StatusCode::FORBIDDEN
-            } else {
-                StatusCode::BAD_REQUEST
-            };
-            (status, Json(findings))
-        })?;
+        .map_err(|findings| (findings_status(&findings), Json(findings)))?;
     let snapshot = state
         .monitor_state_path
         .as_ref()

@@ -209,7 +209,10 @@ impl MonitorService {
         }
         let now = now_epoch_ms();
         let session = {
-            let session = self.sessions.get_mut(session_id).ok_or_else(Vec::new)?;
+            let session = self
+                .sessions
+                .get_mut(session_id)
+                .ok_or_else(|| missing_session_error(session_id))?;
             session.transcript.push(TranscriptEntry {
                 author: request.author,
                 author_kind: request.author_kind,
@@ -227,7 +230,7 @@ impl MonitorService {
             session.clone()
         };
         self.audit_events.push(AuditEvent {
-            event_id: format!("message-relayed-{session_id}-{}", session.transcript.len()),
+            event_id: format!("message-relayed-{session_id}-{}", self.audit_events.len() + 1),
             session_id: Some(session_id.to_owned()),
             agent_name: session.assigned_agent.clone(),
             kind: AuditEventKind::MessageRelayed,
@@ -479,6 +482,14 @@ fn now_epoch_ms() -> u128 {
 
 fn session_author(session_id: &str) -> String {
     format!("session-bootstrap:{session_id}")
+}
+
+fn missing_session_error(session_id: &str) -> Vec<crate::Vulnerability> {
+    vec![crate::Vulnerability::new(
+        "session_not_found",
+        format!("Hunter session {session_id} was not found."),
+        crate::VulnerabilityLevel::Low,
+    )]
 }
 
 #[cfg(test)]
