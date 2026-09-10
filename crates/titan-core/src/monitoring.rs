@@ -230,7 +230,10 @@ impl MonitorService {
             session.clone()
         };
         self.audit_events.push(AuditEvent {
-            event_id: format!("message-relayed-{session_id}-{}", self.audit_events.len() + 1),
+            event_id: format!(
+                "message-relayed-{session_id}-{}",
+                self.audit_events.len() + 1
+            ),
             session_id: Some(session_id.to_owned()),
             agent_name: session.assigned_agent.clone(),
             kind: AuditEventKind::MessageRelayed,

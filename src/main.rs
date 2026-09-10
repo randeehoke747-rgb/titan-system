@@ -120,7 +120,11 @@ fn is_authorized(headers: &HeaderMap, expected_token: Option<&str>) -> bool {
 }
 
 fn findings_status(findings: &[Vulnerability]) -> StatusCode {
-    if findings.is_empty() || findings.iter().any(|finding| finding.code == "session_not_found") {
+    if findings.is_empty()
+        || findings
+            .iter()
+            .any(|finding| finding.code == "session_not_found")
+    {
         StatusCode::NOT_FOUND
     } else if findings
         .iter()
