@@ -108,14 +108,97 @@ fn configuration_errors(config: &HunterConfig, runtime_config: &RuntimeConfig) -
 }
 
 fn expected_bearer_token(headers: &HeaderMap) -> Option<&str> {
-    let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
-    value.strip_prefix("Bearer ")
+    let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?.trim();
+    let mut parts = value.splitn(2, char::is_whitespace);
+    let scheme = parts.next()?;
+    if !scheme.eq_ignore_ascii_case("bearer") {
+        return None;
+    }
+    let token = parts.next()?.trim();
+    if token.is_empty() {
+        None
+    } else {
+        Some(token)
+    }
+}
+
+fn secure_token_eq(expected: &str, provided: &str) -> bool {
+    let expected = expected.as_bytes();
+    let provided = provided.as_bytes();
+    let mut diff = expected.len() ^ provided.len();
+    let max_len = expected.len().max(provided.len());
+
+    for index in 0..max_len {
+        let expected_byte = expected.get(index).copied().unwrap_or_default();
+        let provided_byte = provided.get(index).copied().unwrap_or_default();
+        diff |= usize::from(expected_byte ^ provided_byte);
+    }
+
+    diff == 0
 }
 
 fn is_authorized(headers: &HeaderMap, expected_token: Option<&str>) -> bool {
     match expected_token {
-        Some(expected_token) => expected_bearer_token(headers) == Some(expected_token),
+        Some(expected_token) => expected_bearer_token(headers)
+            .map(|provided_token| secure_token_eq(expected_token, provided_token))
+            .unwrap_or(false),
         None => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{expected_bearer_token, is_authorized, secure_token_eq};
+    use axum::http::{header, HeaderMap, HeaderValue};
+
+    fn headers_with_authorization(value: &str) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_str(value).expect("valid header"),
+        );
+        headers
+    }
+
+    #[test]
+    fn bearer_token_parsing_accepts_standard_bearer_header() {
+        let header = format!("{} {}", "Bearer", "operator-token");
+        let headers = headers_with_authorization(&header);
+        assert_eq!(expected_bearer_token(&headers), Some("operator-token"));
+    }
+
+    #[test]
+    fn bearer_token_parsing_accepts_case_insensitive_scheme_and_extra_spaces() {
+        let headers = headers_with_authorization("   bearer    ingest-token   ");
+        assert_eq!(expected_bearer_token(&headers), Some("ingest-token"));
+    }
+
+    #[test]
+    fn bearer_token_parsing_rejects_missing_or_empty_token() {
+        let headers = headers_with_authorization("Bearer   ");
+        assert_eq!(expected_bearer_token(&headers), None);
+    }
+
+    #[test]
+    fn bearer_token_parsing_rejects_non_bearer_scheme() {
+        let headers = headers_with_authorization("Basic abc123");
+        assert_eq!(expected_bearer_token(&headers), None);
+    }
+
+    #[test]
+    fn secure_token_comparison_matches_identical_tokens_only() {
+        assert!(secure_token_eq("same-token", "same-token"));
+        assert!(!secure_token_eq("same-token", "different-token"));
+        assert!(!secure_token_eq("same-token", "same-token-extra"));
+    }
+
+    #[test]
+    fn authorization_requires_matching_expected_bearer_token() {
+        let header = format!("{} {}", "Bearer", "secret-token");
+        let headers = headers_with_authorization(&header);
+        assert!(is_authorized(&headers, Some("secret-token")));
+        assert!(!is_authorized(&headers, Some("other-token")));
+        assert!(!is_authorized(&headers, None));
     }
 }
 
